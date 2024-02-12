@@ -7,7 +7,6 @@ import re
 from word2number import w2n
 import concurrent.futures
 
-
 # Constants
 WINDOW_WIDTH = 600
 WINDOW_HEIGHT = 400
