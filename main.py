@@ -59,13 +59,12 @@ class SpeechToSignLanguage:
                 with sr.Microphone() as source2:
                     self.r.adjust_for_ambient_noise(source2, duration=0.2)
                     audio = self.r.listen(source2)
-                    text: str = self.r.recognize_sphinx(audio)
+                    text: str = self.r.recognize_google(audio)
                     text = self.decontracted(text.lower())
                     self.recorded_texts.append(text)
                     return text
-            except Exception as e :
+            except:
                 print("Error occurred")
-                print(e)
 
     def play_video(self, video_file_path: str, word: str, finished_chars: list[str]):
         cap = cv2.VideoCapture(video_file_path)
