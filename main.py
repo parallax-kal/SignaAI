@@ -56,11 +56,12 @@ class SpeechToSignLanguage:
     def record_transcribe(self):
         while True:
             try:
-                with sr.Microphone() as source2:
-                    self.r.adjust_for_ambient_noise(source2, duration=0.2)
-                    audio = self.r.listen(source2)
+                with sr.Microphone() as source:
+                    self.r.adjust_for_ambient_noise(source, duration=0.2)
+                    audio = self.r.listen(source)
                     text: str = self.r.recognize_google(audio)
                     text = self.decontracted(text.lower())
+                    print(text)
                     self.recorded_texts.append(text)
                     return text
             except:
@@ -73,7 +74,7 @@ class SpeechToSignLanguage:
             ret, frame = cap.read()
             if ret:
                 frame = cv2.resize(frame, (WINDOW_WIDTH, WINDOW_HEIGHT))
-                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                 cv2.putText(frame, word, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
@@ -85,7 +86,7 @@ class SpeechToSignLanguage:
                 frame = pygame.surfarray.make_surface(frame)
                 screen.blit(frame, (0, 0))
                 pygame.display.flip()
-                time.sleep(1/75)
+                time.sleep(1/78)
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         cap.release()
