@@ -63,8 +63,9 @@ class SpeechToSignLanguage:
                     text = self.decontracted(text.lower())
                     self.recorded_texts.append(text)
                     return text
-            except:
+            except Exception as e:
                 print("Error occurred")
+                print(e)
 
     def play_video(self, video_file_path: str, word: str, finished_chars: list[str]):
         cap = cv2.VideoCapture(video_file_path)
