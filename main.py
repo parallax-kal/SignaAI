@@ -1,4 +1,7 @@
+# 1234567
+import pyaudio
 import speech_recognition as sr
+import vosk
 import os
 import pygame
 import cv2
@@ -24,6 +27,9 @@ class SpeechToSignLanguage:
         self.alphabets = self.get_videos("assets/alphabets/")
         self.numbers = self.get_videos("assets/numbers/")
         self.recorded_texts: list[str] = []
+
+        model_path = "C:/Users/PC/Downloads/Compressed/vosk-model-small-en-us-0.15/vosk-model-small-en-us-0.15"
+        self.recognizer = vosk.KaldiRecognizer(vosk.Model(model_path), 16000)
 
     def decontracted(self, phrase):
         # specific
@@ -54,18 +60,31 @@ class SpeechToSignLanguage:
         return file_names
 
     def record_transcribe(self):
-        while True:
-            try:
-                with sr.Microphone() as source2:
-                    self.r.adjust_for_ambient_noise(source2, duration=0.2)
-                    audio = self.r.listen(source2)
-                    text: str = self.r.recognize_google(audio)
-                    text = self.decontracted(text.lower())
-                    self.recorded_texts.append(text)
-                    return text
-            except Exception as e:
-                print("Error occurred")
-                print(e)
+        try:
+            mic = pyaudio.PyAudio()
+            stream = mic.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8192)
+            stream.start_stream()
+
+            while True:
+                data = stream.read(4096)
+                recognizer = self.recognizer
+                if recognizer.AcceptWaveform(data):
+                    recognized_text = recognizer.Result()
+                    print(f"Recognized: '{recognized_text[14:-3]}'")
+                    return recognized_text[14:-3]
+                pygame.event.pump()  # Process Pygame events
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        stream.stop_stream()
+                        stream.close()
+                        mic.terminate()
+                        break
+                    if event.type == pygame.KEYDOWN:
+                        if event.unicode == 'q':
+                            return None  # Return None if the 'q' key is pressed
+        except Exception as e:
+            print("Error occurred")
+            print(e)
 
     def play_video(self, video_file_path: str, word: str, finished_chars: list[str]):
         cap = cv2.VideoCapture(video_file_path)
@@ -138,7 +157,11 @@ class SpeechToSignLanguage:
             while True:
                 f1 = executor.submit(self.record_transcribe)
                 f2 = executor.submit(self.perform)
-                f1.result()
+
+                recognized_text = f1.result()  # Capture the recognized text
+                if recognized_text is not None:
+                    self.recorded_texts.append(recognized_text)  # Add to recorded_texts if not None
+
                 f2.result()
 
 
