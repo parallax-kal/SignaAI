@@ -1,8 +1,9 @@
 import pickle
-
+import enchant
 import cv2
 import mediapipe as mp
 import numpy as np
+import pyttsx3 as tts
 
 model_dict = pickle.load(open('./model.p', 'rb'))
 model = model_dict['model']
@@ -15,7 +16,17 @@ mp_drawing_styles = mp.solutions.drawing_styles
 
 hands = mp_hands.Hands(static_image_mode=True, min_detection_confidence=0.3)
 
-labels_dict = {0: 'A', 1: 'B', 2: 'L'}
+
+def is_valid_word(sequence):
+    # Create a dictionary object for English
+    d = enchant.Dict("en_US")
+
+    # Check if the sequence is a valid English word
+    return d.check(sequence)
+
+recognized_chars = []
+
+
 while True:
 
     data_aux = []
@@ -57,18 +68,19 @@ while True:
 
         x2 = int(max(x_) * W) - 10
         y2 = int(max(y_) * H) - 10
-
-        prediction = model.predict([np.asarray(data_aux)])
         
-
+        prediction = model.predict([np.asarray(data_aux)])
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 4)
         cv2.putText(frame, prediction[0], (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3,
                     cv2.LINE_AA)
-
+        recognized_chars.append(prediction[0])
+        is_valid = is_valid_word(''.join(recognized_chars))
+        if is_valid and len(recognized_chars) > 1:
+            tts.speak(''.join(recognized_chars))
+            
     cv2.imshow('frame', frame)
     cv2.waitKey(1)
-
 
 cap.release()
 cv2.destroyAllWindows()
