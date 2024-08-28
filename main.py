@@ -1,6 +1,4 @@
-# 1234567
 import pyaudio
-import speech_recognition as sr
 import vosk
 import os
 import pygame
@@ -9,10 +7,11 @@ import time
 import re
 from word2number import w2n
 import concurrent.futures
+from typing import Union, List
 
 # Constants
-WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 400
+WINDOW_WIDTH = 1000
+WINDOW_HEIGHT = 600
 
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -22,44 +21,35 @@ pygame.display.set_caption('Speech to Sign Language')
 class SpeechToSignLanguage:
     def __init__(self, screen_rect):
         self.screen_rect = screen_rect
-        self.r = sr.Recognizer()
-        self.specifics = self.get_videos("assets/specific/")
-        self.alphabets = self.get_videos("assets/alphabets/")
-        self.numbers = self.get_videos("assets/numbers/")
-        self.recorded_texts: list[str] = []
+        self.specific_signs = self.load_videos("assets/specific/")
+        self.alphabet_signs = self.load_videos("assets/alphabets/")
+        self.number_signs = self.load_videos("assets/numbers/")
+        self.recorded_texts: List[str] = []
+        self.recognizer = vosk.KaldiRecognizer(vosk.Model("./vosk-model-small-en-us-0.15/"), 16000)
 
-        model_path = "C:/Users/PC/Downloads/Compressed/vosk-model-small-en-us-0.15/vosk-model-small-en-us-0.15"
-        self.recognizer = vosk.KaldiRecognizer(vosk.Model(model_path), 16000)
-
-    def decontracted(self, phrase):
-        # specific
-        phrase = re.sub(r"won\'t", "will not", phrase)
-        phrase = re.sub(r"can\'t", "can not", phrase)
-
-        # general
-        phrase = re.sub(r"n\'t", " not", phrase)
-        phrase = re.sub(r"\'re", " are", phrase)
-        phrase = re.sub(r"\'s", " is", phrase)
-        phrase = re.sub(r"\'d", " would", phrase)
-        phrase = re.sub(r"\'ll", " will", phrase)
-        phrase = re.sub(r"\'t", " not", phrase)
-        phrase = re.sub(r"\'ve", " have", phrase)
-        phrase = re.sub(r"\'m", " am", phrase)
+    @staticmethod
+    def decontract(phrase: str) -> str:
+        contractions = {
+            r"won\'t": "will not", r"can\'t": "can not", r"n\'t": " not",
+            r"\'re": " are", r"\'s": " is", r"\'d": " would", r"\'ll": " will",
+            r"\'t": " not", r"\'ve": " have", r"\'m": " am"
+        }
+        for contraction, expanded in contractions.items():
+            phrase = re.sub(contraction, expanded, phrase)
         return phrase
 
-    def convert_word_number_to_number(self, word: str) -> int | float | None:
+    @staticmethod
+    def convert_word_to_number(word: str) -> Union[int, float, None]:
         try:
-            number = w2n.word_to_num(word)
-            return number
-        except:
+            return w2n.word_to_num(word)
+        except ValueError:
             return None
 
-    def get_videos(self, folder_path) -> list[str]:
-        file_names = os.listdir(folder_path)
-        file_names = [file_name.split(".")[0] for file_name in file_names]
-        return file_names
+    @staticmethod
+    def load_videos(folder_path: str) -> List[str]:
+        return [os.path.splitext(file)[0] for file in os.listdir(folder_path)]
 
-    def record_transcribe(self):
+    def record_and_transcribe(self) -> Union[str, None]:
         try:
             mic = pyaudio.PyAudio()
             stream = mic.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8192)
@@ -67,103 +57,88 @@ class SpeechToSignLanguage:
 
             while True:
                 data = stream.read(4096)
-                recognizer = self.recognizer
-                if recognizer.AcceptWaveform(data):
-                    recognized_text = recognizer.Result()
-                    print(f"Recognized: '{recognized_text[14:-3]}'")
-                    return recognized_text[14:-3]
-                pygame.event.pump()  # Process Pygame events
+                if self.recognizer.AcceptWaveform(data):
+                    input_text = self.recognizer.Result()[14:-3]
+                    if input_text:
+                        print(f"Speech: '{input_text}'")
+                        return input_text
+
                 for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
+                    if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.unicode == 'q'):
                         stream.stop_stream()
                         stream.close()
                         mic.terminate()
-                        break
-                    if event.type == pygame.KEYDOWN:
-                        if event.unicode == 'q':
-                            return None  # Return None if the 'q' key is pressed
+                        return None
         except Exception as e:
-            print("Error occurred")
-            print(e)
+            print("Error occurred:", e)
 
-    def play_video(self, video_file_path: str, word: str, finished_chars: list[str]):
+    def play_video(self, video_file_path: str, word: str, completed_chars: List[str]):
         cap = cv2.VideoCapture(video_file_path)
-        joined_finished_chars = "".join(finished_chars)
+        joined_chars = "".join(completed_chars)
+        font = pygame.font.Font(None, 36)
+
         while cap.isOpened():
             ret, frame = cap.read()
-            if ret:
-                frame = cv2.resize(frame, (WINDOW_WIDTH, WINDOW_HEIGHT))
-                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                cv2.putText(frame, word, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                            1, (255, 255, 255), 2, cv2.LINE_AA, True)
-
-                cv2.putText(frame, joined_finished_chars, (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
-                            1, (255, 0, 0), 2, cv2.LINE_AA, True)
-
-                frame = pygame.surfarray.make_surface(frame)
-                screen.blit(frame, (0, 0))
-                pygame.display.flip()
-                time.sleep(1/75)
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        cap.release()
-                        pygame.quit()
-                        exit()
-            else:
+            if not ret:
                 break
+
+            frame = cv2.resize(frame, (WINDOW_WIDTH, WINDOW_HEIGHT))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_surface = pygame.surfarray.make_surface(frame)
+            screen.fill((0, 0, 0))
+            screen.blit(pygame.transform.rotate(frame_surface, 270), (0, 0))
+            screen.blit(font.render(word, True, (255, 255, 255)), (10, 30))
+            screen.blit(font.render(joined_chars, True, (255, 0, 0)), (10, 70))
+            pygame.display.flip()
+
         cap.release()
 
     def text_to_sign(self, text: str):
+        words = text.split(" ")
 
-        splitted_text = text.split(" ")
-
-        for word in splitted_text:
-            if word in self.specifics:
-                print(word)
-                self.play_video(
-                    f'assets/specific/{word}.mp4', word, [word])
+        for word in words:
+            if word in self.specific_signs:
+                self.play_video(f'assets/specific/{word}.mp4', word, [word])
             else:
-                finished_chars = []
-                # check if it is a number in disguise(like ten million, twenty)
-                number = self.convert_word_number_to_number(word)
+                completed_chars = []
+                number = self.convert_word_to_number(word)
                 if number is not None:
-                    number = str(number)
-                    for char in number:
-                        print(char)
-                        finished_chars.append(char)
-                        self.play_video(
-                            f'assets/numbers/{char}.mp4', word, finished_chars)
+                    for char in str(number):
+                        completed_chars.append(char)
+                        self.play_video(f'assets/numbers/{char}.mp4', word, completed_chars)
                 else:
                     for char in word:
-                        if char in self.alphabets:
-                            print(char)
-                            finished_chars.append(char)
-                            self.play_video(
-                                f'assets/alphabets/{char}.mp4', word, finished_chars)
-                        else:
-                            print("Not found")
-                            continue
+                        if char in self.alphabet_signs:
+                            completed_chars.append(char)
+                            self.play_video(f'assets/alphabets/{char}.mp4', word, completed_chars)
 
-    def perform(self):
-        if len(self.recorded_texts) > 0:
-            text = self.recorded_texts[0]
-            self.recorded_texts = self.recorded_texts[1:]
-            self.text_to_sign(text)
+    def display_message(self, message: str, font_size: int = 48):
+        font = pygame.font.Font(None, font_size)
+        text_surface = font.render(message, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=self.screen_rect.center)
+        screen.fill((0, 0, 0))
+        screen.blit(text_surface, text_rect)
+        pygame.display.flip()
+
+    def process_text(self):
+        if self.recorded_texts:
+            self.text_to_sign(self.recorded_texts.pop(0))
 
     def start(self):
+        self.display_message("Say something")
+        time.sleep(2)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             while True:
-                f1 = executor.submit(self.record_transcribe)
-                f2 = executor.submit(self.perform)
+                f1 = executor.submit(self.record_and_transcribe)
+                f2 = executor.submit(self.process_text)
 
-                recognized_text = f1.result()  # Capture the recognized text
-                if recognized_text is not None:
-                    self.recorded_texts.append(recognized_text)  # Add to recorded_texts if not None
+                recognized_text = f1.result()
+                if recognized_text:
+                    self.recorded_texts.append(recognized_text)
 
                 f2.result()
 
 
-speech_to_sign_language = SpeechToSignLanguage(screen.get_rect())
-speech_to_sign_language.start()
+if __name__ == "__main__":
+    speech_to_sign_language = SpeechToSignLanguage(screen.get_rect())
+    speech_to_sign_language.start()
