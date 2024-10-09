@@ -9,6 +9,7 @@ from word2number import w2n
 import concurrent.futures
 from typing import Union, List
 
+
 # Constants
 WINDOW_WIDTH = 1000
 WINDOW_HEIGHT = 600
