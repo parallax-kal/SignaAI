@@ -1,18 +1,15 @@
 import os
 import pygame
 import cv2
-import threading
 import pyttsx3
 from dotenv import load_dotenv
+import speech_recognition as sr
 from word2number import w2n
-from openai import OpenAI
 from typing import List, Union
+import time
 
 # Load environment variables
 load_dotenv()
-
-# Initialize OpenAI Client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Constants
 WINDOW_WIDTH = 1000
@@ -24,22 +21,22 @@ BUTTON_TEXT_COLOR = (255, 255, 255)
 # Pygame setup
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption('Speech to Sign Language with OpenAI')
+pygame.display.set_caption('Signa AI')
 
 
-class SpeechToSignLanguage:
+class SignaAI:
     def __init__(self, screen_rect):
         self.screen_rect = screen_rect
         self.input_text = ""
-        self.response_text = ""
-        self.recording = False
         self.transcribed_text = ""
+        self.recording = False
         self.buttons = {}
         self.specific_signs = self.load_videos("assets/specific/")
         self.alphabet_signs = self.load_videos("assets/alphabets/")
         self.number_signs = self.load_videos("assets/numbers/")
         self.font = pygame.font.Font(None, 36)
         self.text_to_speech_engine = pyttsx3.init()
+        self.r = sr.Recognizer()
 
     @staticmethod
     def convert_word_to_number(word: str) -> Union[int, float, None]:
@@ -60,7 +57,8 @@ class SpeechToSignLanguage:
 
     def draw_text(self, message, y_offset=0):
         text_surf = self.font.render(message, True, BUTTON_TEXT_COLOR)
-        text_rect = text_surf.get_rect(center=(self.screen_rect.centerx, self.screen_rect.centery + y_offset))
+        text_rect = text_surf.get_rect(
+            center=(self.screen_rect.centerx, self.screen_rect.centery + y_offset))
         screen.blit(text_surf, text_rect)
 
     def display_message(self, message: str, y_offset=0):
@@ -69,10 +67,12 @@ class SpeechToSignLanguage:
         pygame.display.flip()
 
     def text_to_sign(self, text: str):
+        # remove all special characters from text and remain with only alphabets and numbers
+        text = ''.join(e for e in text if e.isalnum() or e.isspace())
         words = text.split(" ")
 
         for word in words:
-            if word in self.specific_signs:
+            if word.lower() in self.specific_signs:
                 self.play_video(f'assets/specific/{word}.mp4', word, [word])
             else:
                 completed_chars = []
@@ -80,58 +80,44 @@ class SpeechToSignLanguage:
                 if number is not None:
                     for char in str(number):
                         completed_chars.append(char)
-                        self.play_video(f'assets/numbers/{char}.mp4', word, completed_chars)
+                        self.play_video(
+                            f'assets/numbers/{char}.mp4', word, completed_chars)
                 else:
                     for char in word:
-                        if char in self.alphabet_signs:
-                            completed_chars.append(char)
-                            self.play_video(f'assets/alphabets/{char}.mp4', word, completed_chars)
+                        if char.lower() in self.alphabet_signs:
+                            completed_chars.append(char)   
+                            self.play_video(
+                                f'assets/alphabets/{char}.mp4', word, completed_chars)
 
     def ui_buttons(self, phase="input"):
         screen.fill(BG_COLOR)
         if phase == "input":
             self.buttons = {
-                "Type Text": pygame.Rect(100, 500, 150, 50),
-                "Record Audio": pygame.Rect(300, 500, 150, 50),
-                "Send": pygame.Rect(500, 500, 150, 50),
+                "Type Text": pygame.Rect(300, 500, 150, 50),
+                "Record Audio": pygame.Rect(500, 500, 250, 50),
             }
         elif phase == "response":
-            self.display_message(self.response_text, y_offset=-100)
             self.buttons = {
-                "Show Signs": pygame.Rect(300, 500, 150, 50),
-                "Read Aloud": pygame.Rect(500, 500, 150, 50),
+                "Show Signs": pygame.Rect(200, 500, 200, 50),
+                "Read Aloud": pygame.Rect(450, 500, 200, 50),
                 "Restart": pygame.Rect(700, 500, 150, 50),
             }
-        elif phase == "sign_language":
-            self.buttons = {
-                "Show Full Text": pygame.Rect(300, 500, 150, 50),
-                "Restart": pygame.Rect(500, 500, 150, 50),
-            }
 
-        if self.input_text:
+        if self.input_text and self.transcribed_text == "":
             self.draw_text(f"Input: {self.input_text}", y_offset=-150)
 
         if self.transcribed_text:
-            self.draw_text(f"Transcribed: {self.transcribed_text}", y_offset=-100)
+            self.draw_text(
+                f"Transcribed: {self.transcribed_text}", y_offset=-100)
 
         for label, rect in self.buttons.items():
             self.draw_button(label, rect)
 
         pygame.display.flip()
 
-    def handle_openai_response(self, user_input):
-        try:
-            # Call OpenAI for a response
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": user_input}]
-            )
-            self.response_text = response.choices[0].message.content
-        except Exception as e:
-            self.response_text = f"Error: {str(e)}"
 
     def play_video(self, video_file_path: str, word: str, completed_chars):
-        cap = cv2.VideoCapture(video_file_path)
+        cap = cv2.VideoCapture(video_file_path.lower(   ))
         joined_chars = "".join(completed_chars)
 
         while cap.isOpened():
@@ -144,14 +130,16 @@ class SpeechToSignLanguage:
             frame_surface = pygame.surfarray.make_surface(frame)
             screen.fill((0, 0, 0))
             screen.blit(pygame.transform.rotate(frame_surface, 270), (0, 0))
-            screen.blit(self.font.render(word, True, (255, 255, 255)), (10, 30))
-            screen.blit(self.font.render(joined_chars, True, (255, 0, 0)), (10, 70))
+            screen.blit(self.font.render(
+                word, True, (255, 255, 255)), (10, 30))
+            screen.blit(self.font.render(
+                joined_chars, True, (255, 0, 0)), (10, 70))
             pygame.display.flip()
-
+            time.sleep(0.015)
         cap.release()
 
     def handle_ui_events(self):
-        self.ui_buttons(phase="input")
+        self.ui_buttons()
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -162,28 +150,30 @@ class SpeechToSignLanguage:
                     for label, rect in self.buttons.items():
                         if rect.collidepoint(pos):
                             if label == "Type Text":
-                                self.input_text = self.get_user_text()
-                                self.ui_buttons()
+                                self.input_text = self.get_user_text().strip()
+                                if self.input_text == "":
+                                    self.ui_buttons(phase="input")
+                                else:
+                                    self.ui_buttons("response")
                             elif label == "Record Audio":
-                                self.display_message("Recording... Press 'q' to stop")
+                                self.display_message(
+                                    "Recording... Press 'q' to stop")
                                 self.recording = True
-                                threading.Thread(target=self.record_audio).start()
-                            elif label == "Send":
-                                if self.input_text or self.recording:
-                                    self.display_message("Processing...")
-                                    self.handle_openai_response(self.input_text or "Audio recorded")                              
-                                    self.ui_buttons(phase="response")
+                                self.record_audio()
+                                self.input_text = self.transcribed_text
+                                self.ui_buttons(phase="response")
                             elif label == "Read Aloud":
-                                self.read_aloud(self.response_text)
+                                self.read_aloud(self.input_text)
+                                self.ui_buttons(phase="response")
                             elif label == "Show Signs":
-                                self.text_to_sign(self.response_text)
-                                self.ui_buttons(phase="sign_language")
+                                self.text_to_sign(self.input_text)
+                                self.ui_buttons(phase="response")
                             elif label == "Restart":
                                 self.input_text = ""
-                                self.response_text = ""
+                                self.transcribed_text = ""
                                 self.ui_buttons(phase="input")
                             elif label == "Show Full Text":
-                                self.display_message(self.response_text)
+                                self.display_message(self.input_text)
                                 self.ui_buttons(phase="response")
 
     def get_user_text(self):
@@ -209,12 +199,20 @@ class SpeechToSignLanguage:
         return user_text
 
     def record_audio(self):
-        # Record audio and transcribe using speech-to-text
-        # Placeholder for actual audio recording and transcription logic
-        self.transcribed_text = "Transcribed audio text will appear here."
-        self.recording = False
-        self.display_message("Audio Transcribed", y_offset=50)
-        self.ui_buttons()
+        with sr.Microphone() as source:
+            while self.recording:
+                try:
+                    # self.r.adjust_for_ambient_noise(source, duration=0.2)
+                    audio = self.r.listen(source)
+                    for event in pygame.event.get():
+                        if event.dict.get("key") == pygame.K_q:
+                            self.display_message("Processing...")
+                            text = self.r.recognize_google(audio)
+                            self.transcribed_text = text
+                            self.recording = False
+                            return
+                except sr.UnknownValueError:
+                    pass
 
     def read_aloud(self, text):
         self.text_to_speech_engine.say(text)
@@ -222,5 +220,5 @@ class SpeechToSignLanguage:
 
 
 if __name__ == "__main__":
-    speech_to_sign_language = SpeechToSignLanguage(screen.get_rect())
-    speech_to_sign_language.handle_ui_events()
+    signa_ai = SignaAI(screen.get_rect())
+    signa_ai.handle_ui_events()
